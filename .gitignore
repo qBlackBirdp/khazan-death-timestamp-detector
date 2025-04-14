@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs and runtime files
+*.log
+
+# Output / result files
+outputs/
+*.csv
+*.json
+
+# Videos
+videos/
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Death sample images (보존 필요 시 주석처리 가능)
+# death_samples/
+# *.png
+
+# System / OS files
+Thumbs.db
+ehthumbs.db
