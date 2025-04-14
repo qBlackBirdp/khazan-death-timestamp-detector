@@ -1,4 +1,5 @@
 # death_detector.py
+from datetime import timedelta
 
 import cv2
 import os
@@ -15,26 +16,39 @@ def load_death_templates(samples_dir: str) -> list:
     return templates
 
 
+def preprocess_gray(img):
+    img = cv2.equalizeHist(img)  # 명암 대비 강화
+    img = cv2.GaussianBlur(img, (3, 3), 0)  # 노이즈 제거
+    img = cv2.Canny(img, 50, 150)  # 엣지 강조
+    return img
+
+
 def load_resized_templates(resized_dir="resized_templates"):
     templates = []
+    filenames = []
+
     for filename in sorted(os.listdir(resized_dir)):
         if filename.lower().endswith((".png", ".jpg", ".jpeg")):
             path = os.path.join(resized_dir, filename)
             img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             templates.append(img)
+            filenames.append(filename)
+
     print(f"[📥] Loaded {len(templates)} resized templates from {resized_dir}")
-    return templates
+    return templates, filenames
 
 
-def detect_death_by_template(frame, templates, threshold=0.65, debug_threshold=0.4) -> bool:
+def detect_death_by_template(frame, templates, threshold=0.65, debug_threshold=0.4, current_time=None) -> bool:
     gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray_frame = preprocess_gray(gray_frame)  # 👈 전처리 적용
 
     for i, template in enumerate(templates):
         res = cv2.matchTemplate(gray_frame, template, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(res)
 
-        if max_val >= 0.5:
-            print(f"    🔎 Template {i+1} match max_val: {max_val:.4f}")
+        if max_val >= debug_threshold:
+            timestamp_str = str(timedelta(seconds=int(current_time))) if current_time is not None else "unknown_time"
+            print(f"    🔎 [{timestamp_str}] Template {i + 1} match max_val: {max_val:.4f}")
 
         if max_val >= threshold:
             print(f"    ✅ Match passed threshold ({threshold}) with Template {i + 1}")
