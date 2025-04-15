@@ -4,7 +4,26 @@ import os
 from core.video_loader import extract_first_frame, extract_frames_from_video
 from core.timestamp_writer import save_timestamps
 from core.death_detector import load_resized_templates, resize_templates_to_frame_ratio_safe, detect_death_by_template, \
-    load_death_templates, pad_template_to_uniform_size, preprocess_gray
+    load_death_templates, pad_template_to_uniform_size,preprocess_template
+
+selected_filenames = [
+    "template_1_resized.png",
+    "template_2_resized.png",
+    "template_3_resized.png",
+    "template_4_resized.png",
+    "template_5_resized.png",
+    "template_6_resized.png",
+    "template_7_resized.png",
+    "template_8_resized.png",
+    "template_9_resized.png",
+    "template_10_resized.png",
+    "template_11_resized.png",
+    "template_12_resized.png",
+    "template_13_resized.png",
+    "template_14_resized.png",
+    "template_15_resized.png",
+    "template_16_resized.png",
+]
 
 VIDEO_DIR = "videos"
 OUTPUT_DIR = "outputs"
@@ -41,24 +60,28 @@ if __name__ == "__main__":
     # 2️⃣ 저장된 리사이즈 템플릿 불러오기
     resized_templates, filenames = load_resized_templates("resized_templates")
 
-    # 2-2️⃣ 패딩으로 크기 통일
-    resized_templates = pad_template_to_uniform_size(resized_templates)
+    # 2-3️⃣ 템플릿 선택
+    all_templates, all_filenames = load_resized_templates("resized_templates")
+    selected_templates = []
+    for fname in selected_filenames:
+        if fname in all_filenames:
+            idx = all_filenames.index(fname)
+            selected_templates.append(all_templates[idx])
+        else:
+            print(f"[⚠️] Template file not found: {fname}")
 
-    # 2-3️⃣ 템플릿 선택 (7, 9, 13번만 사용) → 0-based 인덱스
-    selected_ids = [6, 8, 12]
-    selected_templates = [resized_templates[i] for i in selected_ids]
-    selected_filenames = [filenames[i] for i in selected_ids]
+    print("[🎯] Using templates:")
+    for i, fname in enumerate(selected_filenames):
+        print(f"  └─ Template {i+1}: {fname}")
 
-    print("[🎯] Selected templates:")
-    for idx, name in zip(selected_ids, selected_filenames):
-        print(f"  └─ Template {idx+1}: {name}")
-    resized_templates = [resized_templates[i] for i in selected_ids]
+    # 2-4️⃣ 패딩 적용
+    selected_templates = pad_template_to_uniform_size(selected_templates)
 
-    # 대비 보정 + 노이즈 제거 + 엣지 강조
-    resized_templates = [preprocess_gray(t) for t in resized_templates]
+    # 2-5️⃣ 전처리 (equalizeHist, blur, canny)
+    selected_templates = [preprocess_template(t) for t in selected_templates]
 
     # 3️⃣ 분석
-    process_video(video_path, resized_templates)
+    process_video(video_path, selected_templates)
 
 # 전체 처리하려면 아래 주석 해제
 # if __name__ == "__main__":

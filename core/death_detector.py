@@ -16,10 +16,17 @@ def load_death_templates(samples_dir: str) -> list:
     return templates
 
 
-def preprocess_gray(img):
-    img = cv2.equalizeHist(img)  # 명암 대비 강화
+def preprocess_template(img):
+    img = cv2.equalizeHist(img)  # 명암 대비 향상
     img = cv2.GaussianBlur(img, (3, 3), 0)  # 노이즈 제거
-    img = cv2.Canny(img, 50, 150)  # 엣지 강조
+    # img = cv2.Canny(img, 50, 150)  # 엣지 강조
+    return img
+
+
+def preprocess_frame(img):
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # 그레이 스케일
+    img = cv2.GaussianBlur(img, (3, 3), 0)
+    img = cv2.equalizeHist(img)  # 명암 대비만 적용
     return img
 
 
@@ -39,8 +46,8 @@ def load_resized_templates(resized_dir="resized_templates"):
 
 
 def detect_death_by_template(frame, templates, threshold=0.65, debug_threshold=0.4, current_time=None) -> bool:
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray_frame = preprocess_gray(gray_frame)  # 👈 전처리 적용
+    gray_frame = preprocess_frame(frame)  # 👈 프레임 전처리 (명암 대비만)
+    gray_frame = crop_center(gray_frame, cropx=800, cropy=400)  # 👈 중앙만 잘라서 비교
 
     for i, template in enumerate(templates):
         res = cv2.matchTemplate(gray_frame, template, cv2.TM_CCOEFF_NORMED)
@@ -114,3 +121,10 @@ def pad_template_to_uniform_size(templates):
 
         print(f"  └─ Template {i + 1} padded to: {max_w} x {max_h}")
     return padded
+
+
+def crop_center(img, cropx, cropy):
+    h, w = img.shape
+    startx = w // 2 - cropx // 2
+    starty = h // 2 - cropy // 2
+    return img[starty:starty + cropy, startx:startx + cropx]
