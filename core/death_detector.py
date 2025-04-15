@@ -45,12 +45,19 @@ def load_resized_templates(resized_dir="resized_templates"):
     return templates, filenames
 
 
-def detect_death_by_template(frame, templates, threshold=0.65, debug_threshold=0.4, current_time=None) -> bool:
-    gray_frame = preprocess_frame(frame)  # 👈 프레임 전처리 (명암 대비만)
-    gray_frame = crop_center(gray_frame, cropx=800, cropy=400)  # 👈 중앙만 잘라서 비교
+def detect_death_by_template(frame, templates, threshold=0.65, debug_threshold=0.5, current_time=None) -> bool:
+    gray_frame = preprocess_frame(frame)
+    cropped = crop_center(gray_frame, cropx=800, cropy=400)
+
+    # 시각 확인용
+    os.makedirs("debug", exist_ok=True)
+    cv2.imwrite("debug/cropped_sample.png", cropped)  # 저장
+
+    # cv2.imshow("Cropped Center", cropped)  # 실시간 보기 (선택)
+    # cv2.waitKey(0); cv2.destroyAllWindows()
 
     for i, template in enumerate(templates):
-        res = cv2.matchTemplate(gray_frame, template, cv2.TM_CCOEFF_NORMED)
+        res = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(res)
 
         if max_val >= debug_threshold:
