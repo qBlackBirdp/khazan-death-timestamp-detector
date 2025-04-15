@@ -1,10 +1,11 @@
 # main.py
 
 import os
+import cv2
 from core.video_loader import extract_first_frame, extract_frames_from_video
 from core.timestamp_writer import save_timestamps
 from core.death_detector import load_resized_templates, resize_templates_to_frame_ratio_safe, detect_death_by_template, \
-    load_death_templates, pad_template_to_uniform_size,preprocess_template
+    load_death_templates, pad_template_to_uniform_size, preprocess_template
 
 selected_filenames = [
     "template_1_resized.png",
@@ -31,17 +32,32 @@ SAMPLES_DIR = "death_samples_images"
 FPS = 1  # 초당 프레임 수
 
 
-def process_video(video_path, templates):
+def process_video(video_path, templates, masks=None):
     print(f"[▶] Processing {video_path}...")
     frames, times = extract_frames_from_video(video_path, fps=FPS)
 
     death_timestamps = []
     for frame, second in zip(frames, times):
-        if detect_death_by_template(frame, templates, current_time=second):
+        if detect_death_by_template(frame, templates, masks=masks, current_time=second):
             print(f"    💀 Death detected at {int(second)} sec")
             death_timestamps.append(second)
 
     save_timestamps(video_path, death_timestamps, OUTPUT_DIR)
+
+
+def load_template_masks(mask_dir):
+    masks = []
+    filenames = []
+
+    for filename in sorted(os.listdir(mask_dir)):
+        if filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            path = os.path.join(mask_dir, filename)
+            mask = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            masks.append(mask)
+            filenames.append(filename)
+
+    print(f"[📥] Loaded {len(masks)} template masks from {mask_dir}")
+    return masks, filenames
 
 
 if __name__ == "__main__":
@@ -52,36 +68,37 @@ if __name__ == "__main__":
     if first_frame is None:
         exit()
 
-    frame_shape = first_frame.shape
-    raw_templates = load_death_templates(SAMPLES_DIR)
-    resize_templates_to_frame_ratio_safe(
-        raw_templates, frame_shape, target_width_ratio=0.3, save_dir="resized_templates"
-    )
-    # 2️⃣ 저장된 리사이즈 템플릿 불러오기
-    resized_templates, filenames = load_resized_templates("resized_templates")
+    # 마스크 로드
+    all_masks, mask_filenames = load_template_masks("resized_template_masks")
 
-    # 2-3️⃣ 템플릿 선택
+    # 템플릿 로드
     all_templates, all_filenames = load_resized_templates("resized_templates")
+
     selected_templates = []
+    selected_masks = []
     for fname in selected_filenames:
         if fname in all_filenames:
             idx = all_filenames.index(fname)
             selected_templates.append(all_templates[idx])
+
+            # 마스크도 이름 기준으로 매칭해서 넣기
+            if fname in mask_filenames:
+                selected_masks.append(all_masks[mask_filenames.index(fname)])
+            else:
+                print(f"[⚠️] Corresponding mask not found for {fname}")
         else:
             print(f"[⚠️] Template file not found: {fname}")
 
     print("[🎯] Using templates:")
     for i, fname in enumerate(selected_filenames):
-        print(f"  └─ Template {i+1}: {fname}")
+        print(f"  └─ Template {i + 1}: {fname}")
 
-    # 2-4️⃣ 패딩 적용
+    # 패딩 → 전처리
     selected_templates = pad_template_to_uniform_size(selected_templates)
-
-    # 2-5️⃣ 전처리 (equalizeHist, blur, canny)
     selected_templates = [preprocess_template(t) for t in selected_templates]
 
-    # 3️⃣ 분석
-    process_video(video_path, selected_templates)
+    # 🧠 분석 (마스크 포함)
+    process_video(video_path, selected_templates, masks=selected_masks)
 
 # 전체 처리하려면 아래 주석 해제
 # if __name__ == "__main__":

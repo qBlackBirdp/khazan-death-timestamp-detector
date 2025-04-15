@@ -1,8 +1,12 @@
 # death_detector.py
+
 from datetime import timedelta
 
 import cv2
 import os
+
+CROP_X = 1000
+CROP_Y = 400
 
 
 def load_death_templates(samples_dir: str) -> list:
@@ -45,30 +49,55 @@ def load_resized_templates(resized_dir="resized_templates"):
     return templates, filenames
 
 
-def detect_death_by_template(frame, templates, threshold=0.65, debug_threshold=0.5, current_time=None) -> bool:
+def detect_death_by_template(frame, templates, masks=None, threshold=0.65, debug_threshold=0.5, current_time=None) -> bool:
     gray_frame = preprocess_frame(frame)
-    cropped = crop_center(gray_frame, cropx=800, cropy=400)
+    cropped = crop_center(gray_frame)
 
-    # 시각 확인용
     os.makedirs("debug", exist_ok=True)
-    cv2.imwrite("debug/cropped_sample.png", cropped)  # 저장
 
-    # cv2.imshow("Cropped Center", cropped)  # 실시간 보기 (선택)
-    # cv2.waitKey(0); cv2.destroyAllWindows()
+    if current_time is not None:
+        timestamp_str = f"{int(current_time):06d}"  # 예: 1543 → 001543
+        cv2.imwrite(f"debug/{timestamp_str}_frame_gray.png", gray_frame)
+        cv2.imwrite(f"debug/{timestamp_str}_cropped.png", cropped)
+
+    detected = False
 
     for i, template in enumerate(templates):
-        res = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, _ = cv2.minMaxLoc(res)
+        mask = masks[i] if masks else None
+        method = cv2.TM_CCORR_NORMED if mask is not None else cv2.TM_CCOEFF_NORMED
 
-        if max_val >= debug_threshold:
-            timestamp_str = str(timedelta(seconds=int(current_time))) if current_time is not None else "unknown_time"
-            print(f"    🔎 [{timestamp_str}] Template {i + 1} match max_val: {max_val:.4f}")
+        res = cv2.matchTemplate(cropped, template, method, mask=mask)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
 
-        if max_val >= threshold:
-            print(f"    ✅ Match passed threshold ({threshold}) with Template {i + 1}")
-            return True
+        # 💡 마스크 적용 점수 가중치
+        if mask is not None:
+            coverage_ratio = cv2.countNonZero(mask) / (mask.shape[0] * mask.shape[1])
+        else:
+            coverage_ratio = 1.0
 
-    return False
+        final_score = max_val * coverage_ratio
+
+        # 디버그용 시각화 및 출력
+        if current_time is not None:
+            timestamp_str = str(timedelta(seconds=int(current_time)))
+            print(f"    🔎 [{timestamp_str}] Template {i + 1} → max_val: {max_val:.4f}, coverage: {coverage_ratio:.4f}, final_score: {final_score:.4f}")
+
+            debug_vis = cv2.cvtColor(cropped.copy(), cv2.COLOR_GRAY2BGR)
+            th, tw = template.shape[:2]
+            top_left = max_loc
+            bottom_right = (top_left[0] + tw, top_left[1] + th)
+            cv2.rectangle(debug_vis, top_left, bottom_right, (0, 255, 0), 2)
+            score_str = f"{final_score:.4f}".replace('.', '_')
+            debug_path = f"debug/{int(current_time):06d}_template_{i + 1}_score_{score_str}.png"
+            cv2.imwrite(debug_path, debug_vis)
+
+        # 최종 감지 조건
+        if final_score >= threshold:
+            print(f"    ✅ Match passed final threshold ({threshold}) with Template {i + 1}")
+            detected = True
+
+    return detected
+
 
 
 # def resize_templates_to_frame(templates, frame_shape, target_ratio=(0.3, 0.1)):
@@ -130,8 +159,13 @@ def pad_template_to_uniform_size(templates):
     return padded
 
 
-def crop_center(img, cropx, cropy):
-    h, w = img.shape
-    startx = w // 2 - cropx // 2
-    starty = h // 2 - cropy // 2
-    return img[starty:starty + cropy, startx:startx + cropx]
+def crop_center(img, cropx=1000, cropy=400):
+    print(f"========================== crop_center 실행 ==============================")
+    y, x = img.shape[:2]
+    startx = max(x // 2 - CROP_X // 2, 0)
+    starty = max(y // 2 - CROP_Y // 2, 0)
+    endx = startx + CROP_X
+    endy = starty + CROP_Y
+    return img[starty:endy, startx:endx]
+
+
