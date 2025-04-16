@@ -32,9 +32,22 @@ SAMPLES_DIR = "death_samples_images"
 FPS = 1  # 초당 프레임 수
 
 
-def process_video(video_path, templates, masks=None):
-    print(f"[▶] Processing {video_path}...")
-    frames, times = extract_frames_from_video(video_path, fps=FPS)
+# def process_video(video_path, templates, masks=None):
+#     print(f"[▶] Processing {video_path}...")
+#     frames, times = extract_frames_from_video(video_path, fps=FPS)
+#
+#     death_timestamps = []
+#     for frame, second in zip(frames, times):
+#         if detect_death_by_template(frame, templates, masks=masks, current_time=second):
+#             print(f"    💀 Death detected at {int(second)} sec")
+#             death_timestamps.append(second)
+#
+#     save_timestamps(video_path, death_timestamps, OUTPUT_DIR)
+
+
+def process_video(video_path, templates, masks=None, start_time=0):
+    print(f"[▶] Processing {video_path} from {start_time} sec...")
+    frames, times = extract_frames_from_video(video_path, fps=FPS, start_time=start_time)
 
     death_timestamps = []
     for frame, second in zip(frames, times):
@@ -116,8 +129,10 @@ if __name__ == "__main__":
         if t.shape != m.shape:
             print(f"[❌] Shape mismatch at index {i}: template {t.shape}, mask {m.shape}")
 
+    process_video(video_path, selected_templates, masks=selected_masks, start_time=1200)
+
     # 🧠 분석 (마스크 포함)
-    process_video(video_path, selected_templates, masks=selected_masks)
+    # process_video(video_path, selected_templates, masks=selected_masks)
 
 # 전체 처리하려면 아래 주석 해제
 # if __name__ == "__main__":

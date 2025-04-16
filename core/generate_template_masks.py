@@ -1,5 +1,3 @@
-# generate_template_masks.py
-
 import cv2
 import os
 import numpy as np
@@ -16,21 +14,22 @@ os.makedirs(DEBUG_DIR, exist_ok=True)
 def generate_mask_focused_on_red(template_bgr, target_size=(576, 324)):
     resized = cv2.resize(template_bgr, target_size)
 
-    b, g, r = cv2.split(resized)
-    red_mask = (r > 70) & (g < 170) & (b < 170)
-    red_only = np.zeros_like(resized)
-    red_only[red_mask] = resized[red_mask]
+    # ✅ HSV 기반 붉은색 영역 추출
+    hsv = cv2.cvtColor(resized, cv2.COLOR_BGR2HSV)
+    lower_red1 = np.array([0, 70, 50])
+    upper_red1 = np.array([10, 255, 255])
+    lower_red2 = np.array([170, 70, 50])
+    upper_red2 = np.array([180, 255, 255])
 
-    gray = cv2.cvtColor(red_only, cv2.COLOR_BGR2GRAY)
-    _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    mask = np.zeros_like(gray)
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if 100 < area < 20000:
-            cv2.drawContours(mask, [cnt], -1, 255, -1)
+    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+    red_mask = cv2.bitwise_or(mask1, mask2)
 
-    return mask, resized
+    # ✅ dilation으로 범위 확장
+    kernel = np.ones((3, 3), np.uint8)
+    red_mask_dilated = cv2.dilate(red_mask, kernel, iterations=1)
+
+    return red_mask_dilated, resized
 
 
 def generate_all_masks(resized_dir=TEMPLATE_DIR, output_dir=MASK_SAVE_DIR):
@@ -55,7 +54,7 @@ def generate_all_masks(resized_dir=TEMPLATE_DIR, output_dir=MASK_SAVE_DIR):
         save_path = os.path.join(output_dir, save_name)
         cv2.imwrite(save_path, mask)
 
-        # 디버깅 저장
+        # 디버그 이미지 저장
         cv2.imwrite(os.path.join(DEBUG_DIR, f"template_{i + 1}_resized_debug.png"), resized)
         cv2.imwrite(os.path.join(DEBUG_DIR, f"template_{i + 1}_resized_mask.png"), mask)
 
