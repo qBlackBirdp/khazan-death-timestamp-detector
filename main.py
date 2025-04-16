@@ -5,7 +5,7 @@ import cv2
 from core.video_loader import extract_first_frame, extract_frames_from_video
 from core.timestamp_writer import save_timestamps
 from core.death_detector import load_resized_templates, resize_templates_to_frame_ratio_safe, detect_death_by_template, \
-    load_death_templates, pad_template_to_uniform_size, preprocess_template
+    load_death_templates, pad_template_to_uniform_size, preprocess_template, remove_padding
 
 selected_filenames = [
     "template_1_resized.png",
@@ -76,16 +76,20 @@ if __name__ == "__main__":
 
     selected_templates = []
     selected_masks = []
+
     for fname in selected_filenames:
         if fname in all_filenames:
             idx = all_filenames.index(fname)
             selected_templates.append(all_templates[idx])
 
-            # 마스크도 이름 기준으로 매칭해서 넣기
-            if fname in mask_filenames:
-                selected_masks.append(all_masks[mask_filenames.index(fname)])
+            # 🔁 마스크 이름 구성: template_1_resized → template_1_resized_mask.png
+            expected_mask_name = fname.replace(".png", "_mask.png")
+
+            if expected_mask_name in mask_filenames:
+                mask_idx = mask_filenames.index(expected_mask_name)
+                selected_masks.append(all_masks[mask_idx])
             else:
-                print(f"[⚠️] Corresponding mask not found for {fname}")
+                print(f"[⚠️] Corresponding mask not found for {expected_mask_name}")
         else:
             print(f"[⚠️] Template file not found: {fname}")
 
@@ -93,9 +97,24 @@ if __name__ == "__main__":
     for i, fname in enumerate(selected_filenames):
         print(f"  └─ Template {i + 1}: {fname}")
 
-    # 패딩 → 전처리
+    # 🔪 1. 여백 제거 (패딩 전에!)
+    selected_templates = [remove_padding(t) for t in selected_templates]
+
+    # 🐞 Debug 저장용 — 첫 번째 템플릿만
+    template_trimmed = selected_templates[0]
+    cv2.imwrite("debug/trimmed_template.png", template_trimmed)
+
+    # 📐 2. 패딩으로 사이즈 통일
     selected_templates = pad_template_to_uniform_size(selected_templates)
+    selected_masks = pad_template_to_uniform_size(selected_masks)
+
+    # 🧼 3. 전처리
     selected_templates = [preprocess_template(t) for t in selected_templates]
+    selected_masks = [preprocess_template(m) for m in selected_masks]
+
+    for i, (t, m) in enumerate(zip(selected_templates, selected_masks)):
+        if t.shape != m.shape:
+            print(f"[❌] Shape mismatch at index {i}: template {t.shape}, mask {m.shape}")
 
     # 🧠 분석 (마스크 포함)
     process_video(video_path, selected_templates, masks=selected_masks)

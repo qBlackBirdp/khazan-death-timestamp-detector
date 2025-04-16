@@ -49,55 +49,51 @@ def load_resized_templates(resized_dir="resized_templates"):
     return templates, filenames
 
 
-def detect_death_by_template(frame, templates, masks=None, threshold=0.65, debug_threshold=0.5, current_time=None) -> bool:
+def detect_death_by_template(frame, templates, masks=None, threshold=0.85, current_time=None) -> bool:
+    from datetime import timedelta
     gray_frame = preprocess_frame(frame)
     cropped = crop_center(gray_frame)
-
-    os.makedirs("debug", exist_ok=True)
-
-    if current_time is not None:
-        timestamp_str = f"{int(current_time):06d}"  # 예: 1543 → 001543
-        cv2.imwrite(f"debug/{timestamp_str}_frame_gray.png", gray_frame)
-        cv2.imwrite(f"debug/{timestamp_str}_cropped.png", cropped)
 
     detected = False
 
     for i, template in enumerate(templates):
         mask = masks[i] if masks else None
-        method = cv2.TM_CCORR_NORMED if mask is not None else cv2.TM_CCOEFF_NORMED
 
-        res = cv2.matchTemplate(cropped, template, method, mask=mask)
-        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+        # 중앙 자름
+        template_cropped = crop_center(template)
+        mask_cropped = crop_center(mask) if mask is not None else None
 
-        # 💡 마스크 적용 점수 가중치
-        if mask is not None:
-            coverage_ratio = cv2.countNonZero(mask) / (mask.shape[0] * mask.shape[1])
+        method = cv2.TM_CCORR_NORMED if mask_cropped is not None else cv2.TM_CCOEFF_NORMED
+        res = cv2.matchTemplate(cropped, template_cropped, method, mask=mask_cropped)
+        _, _, _, max_loc = cv2.minMaxLoc(res)
+
+        if mask_cropped is not None:
+            x, y = max_loc
+            h, w = template_cropped.shape[:2]
+            matched_region = cropped[y:y + h, x:x + w]
+            matched_region = preprocess_template(matched_region)
+
+            _, template_bin = cv2.threshold(template_cropped, 30, 255, cv2.THRESH_BINARY)
+            _, matched_bin = cv2.threshold(matched_region, 30, 255, cv2.THRESH_BINARY)
+
+            # template_bin이 1인 영역만 비교
+            masked_area = cv2.countNonZero(cv2.bitwise_and(template_bin, matched_bin, mask=template_bin))
+            valid_area = cv2.countNonZero(template_bin)
+            coverage_ratio = masked_area / valid_area if valid_area > 0 else 0
         else:
-            coverage_ratio = 1.0
+            coverage_ratio = 0.0  # 마스크 없는 경우는 무조건 False 처리
 
-        final_score = max_val * coverage_ratio
-
-        # 디버그용 시각화 및 출력
         if current_time is not None:
             timestamp_str = str(timedelta(seconds=int(current_time)))
-            print(f"    🔎 [{timestamp_str}] Template {i + 1} → max_val: {max_val:.4f}, coverage: {coverage_ratio:.4f}, final_score: {final_score:.4f}")
+            print(
+                f"    🔎 [{timestamp_str}] Template {i + 1} → coverage: {coverage_ratio:.4f}"
+            )
 
-            debug_vis = cv2.cvtColor(cropped.copy(), cv2.COLOR_GRAY2BGR)
-            th, tw = template.shape[:2]
-            top_left = max_loc
-            bottom_right = (top_left[0] + tw, top_left[1] + th)
-            cv2.rectangle(debug_vis, top_left, bottom_right, (0, 255, 0), 2)
-            score_str = f"{final_score:.4f}".replace('.', '_')
-            debug_path = f"debug/{int(current_time):06d}_template_{i + 1}_score_{score_str}.png"
-            cv2.imwrite(debug_path, debug_vis)
-
-        # 최종 감지 조건
-        if final_score >= threshold:
-            print(f"    ✅ Match passed final threshold ({threshold}) with Template {i + 1}")
+        if coverage_ratio >= threshold:
+            print(f"    ✅ Match passed threshold ({threshold}) with Template {i + 1}")
             detected = True
 
     return detected
-
 
 
 # def resize_templates_to_frame(templates, frame_shape, target_ratio=(0.3, 0.1)):
@@ -160,7 +156,7 @@ def pad_template_to_uniform_size(templates):
 
 
 def crop_center(img, cropx=1000, cropy=400):
-    print(f"========================== crop_center 실행 ==============================")
+    # print(f"========================== crop_center 실행 ==============================")
     y, x = img.shape[:2]
     startx = max(x // 2 - CROP_X // 2, 0)
     starty = max(y // 2 - CROP_Y // 2, 0)
@@ -169,3 +165,15 @@ def crop_center(img, cropx=1000, cropy=400):
     return img[starty:endy, startx:endx]
 
 
+def remove_padding(template):
+    # template은 그레이스케일 또는 바이너리 이미지라고 가정
+    if len(template.shape) != 2:
+        raise ValueError("remove_padding() expects a single-channel (grayscale) image")
+
+    # non-zero 영역 좌표 가져오기
+    coords = cv2.findNonZero(template)
+    if coords is None:
+        return template  # 내용이 없는 경우 원본 그대로 반환
+
+    x, y, w, h = cv2.boundingRect(coords)
+    return template[y:y + h, x:x + w]
